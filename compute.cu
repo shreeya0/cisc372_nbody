@@ -6,7 +6,7 @@
 
 __global__ void pAccComp(vector3 *hPos, vector3 *accels, double *mass){
 	int col = (blockDim.x * blockIdx.x) + threadIdx.x;
-	int row = (blockDim.y * blockIdxy) + threadIdx.y;
+	int row = (blockDim.y * blockIdx.y) + threadIdx.y;
 	int ind = (NUMENTITIES * row) + col; 
 	int i = row; 
 	int j = col; 
@@ -20,7 +20,7 @@ __global__ void pAccComp(vector3 *hPos, vector3 *accels, double *mass){
 			}
 			double mag_sq = dist[0] * dist[0] + dist[1] * dist[1] + dist[2] * dist[2];
 			double mag = sqrt(mag_sq);
-			double acc = -1 * GRAVE_CONSTANT * mass[j] /mag_sq;
+			double acc = -1 * GRAV_CONSTANT * mass[j] /mag_sq;
 			FILL_VECTOR(accels[ind], acc * dist[0] / mag, acc * dist[1] / mag, acc * dist[2]/ mag);
 		}
 	}
@@ -50,7 +50,7 @@ void compute(){
 	int block = ceilf(NUMENTITIES / 16.0f);
 	int thread = ceilf(NUMENTITIES / (float) block);
 	dim3 gridDim(block, block, 1);
-	dim3 gridDim(thread, thread, 1);
+	dim3 blockDim(thread, thread, 1);
 	
 	cudaMalloc((void**) &dhPos, sizeof(vector3) * NUMENTITIES);
 	cudaMalloc((void**) &dhVel, sizeof(vector3) * NUMENTITIES);
@@ -62,14 +62,17 @@ void compute(){
 	cudaMemcpy(dhVel, hVel, sizeof(vector3)*NUMENTITIES, cudaMemcpyHostToDevice);
 	cudaMemcpy(dmass, mass, sizeof(double)*NUMENTITIES, cudaMemcpyHostToDevice);
 	
-	pAccComp<<gridDim.x blockDim.x>>(dacc, dsum, dhPos, dhVel);
+	pAccComp<<<gridDim, blockDim>>>(dhPos, dacc, dmass);
 	cudaDeviceSynchronize();
 
-	cudaMemcpy(hPos, dhPos, sizeof(vector3)*NUMENTITIES, cudaMemcpyDeviceToDevice);
-	cudaMemcpy(hVel, dVel, sizeof(vector3)*NUMENTITIES, cudaMemcpyDeviceToDevice);
+	sum<<<gridDim.x, blockDim.x>>>(dacc, dsum, dhPos, dhVel);
+	cudaDeviceSynchronize();
+
+	cudaMemcpy(hPos, dhPos, sizeof(vector3)*NUMENTITIES, cudaMemcpyDeviceToHost);
+	cudaMemcpy(hVel, dhVel, sizeof(vector3)*NUMENTITIES, cudaMemcpyDeviceToHost);
 
 	cudaFree(dhPos);
-	cudaFree(dVel);
+	cudaFree(dhVel);
 	cudaFree(dmass);
 	cudaFree(dacc);
 
